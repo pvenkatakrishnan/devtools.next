@@ -15,6 +15,7 @@
     "graceful-fs": "~2.0.2",
     "concat-stream": "~1.4.3",
     "grunt-dustjs": "~1.2.1",
-    "grunt-contrib-clean": "~0.5.0"
+    "grunt-contrib-clean": "~0.5.0",
+    "grunt-contrib-watch": "~0.5.3"
   }
 }

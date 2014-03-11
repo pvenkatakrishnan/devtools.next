@@ -5,7 +5,8 @@ var path = require('path'),
     mkdirp = require('mkdirp'),
     concat = require('concat-stream'),
     localizr = require('localizr'),
-    fs = require('fs');
+    fs = require('fs'),
+    logger;
 
 function endsWith(str, frag) {
     return str.lastIndexOf(frag) === (str.length - frag.length);
@@ -17,12 +18,17 @@ function correctPathSeparator(filePath) {
 }
 
 module.exports = function(grunt) {
+    logger = grunt.log;
     grunt.registerMultiTask('localizr', 'A preprocessor for Dust.js templates.', function () {
-        var done, options, contentPath, bundles, bundleRoot, filesSrc;
-        var pathName = path.sep + '**' + path.sep + '*.properties';
-        var fileRoot = path.join('public', 'templates'),
-            superPromArr = [];
+        var done, options, contentPath, bundles, bundleRoot, filesSrc,
+            pathName = path.sep + '**' + path.sep + '*.properties',
+            fileRoot = path.join('public', 'templates'),
+            superPromArr = [],
+            propFile = this.options().contentFile,
+            promise;
+
         done = this.async();
+
         options = this.options({
             fallback: 'en_US',
             contentPath: ['locales'],
@@ -51,6 +57,16 @@ module.exports = function(grunt) {
 
         // TODO: Currently only honors one locale directory.
         bundleRoot = Array.isArray(bundleRoot) ? bundleRoot[0] : bundleRoot;
+
+        //property file changed
+        if (propFile) {
+            promise = processPropFileChanged(propFile, fileRoot, bundleRoot, options);
+            promise.then(done);
+            return;
+        }
+
+
+
         bundles = (grunt.file.expand(contentPath)).map(correctPathSeparator);
 
 
@@ -63,6 +79,31 @@ module.exports = function(grunt) {
         });
     });
 };
+
+function processPropFileChanged(propFile, fileRoot, bundleRoot, options) {
+    var deferred = Q.defer();
+    utils.genNameWithProp(propFile, fileRoot, bundleRoot, function(err, fileInfo) {
+        var srcFile,
+            destFile;
+
+        if (err) {
+            logger.err([err]);
+            done();
+            return;
+        }
+
+        destFile = utils.genFilePath(options.tmpDir, fileInfo, 'dust');
+        fileInfo.locale = undefined;
+        srcFile = utils.genFilePath(fileRoot, fileInfo, 'dust');
+
+        console.info(srcFile, ',', destFile, ',', propFile);
+        var promise = localize(srcFile, propFile, destFile);
+        promise.then(function() {
+            deferred.resolve();
+        });
+    });
+    return deferred.promise;
+}
 
 function processSrcDust(srcFile, bundles, bundleRoot, options) {
     var deferred = Q.defer(),
@@ -140,6 +181,7 @@ function localize(srcFile, propFile, destFile) {
                     deferred.reject(err);
                     return;
                 }
+                logger.write('\nGenerated ', destFile);
                 deferred.resolve(destFile);
             });
         });
@@ -158,12 +200,13 @@ function localize(srcFile, propFile, destFile) {
 function copy(srcFile, destFile) {
    var deferred = Q.defer();
     mkdirp(path.dirname(destFile), function(err) {
-       if (err) {
+        if (err) {
             deferred.reject(err);
             return;
-       }
-       fs.createReadStream(srcFile).pipe(fs.createWriteStream(destFile));
-       deferred.resolve();
+        }
+        fs.createReadStream(srcFile).pipe(fs.createWriteStream(destFile));
+        logger.write('\nGenerated ', destFile);
+        deferred.resolve();
     });
     return deferred.promise;
 }
