@@ -53,34 +53,9 @@ module.exports = function(grunt) {
         bundleRoot = Array.isArray(bundleRoot) ? bundleRoot[0] : bundleRoot;
         bundles = (grunt.file.expand(contentPath)).map(correctPathSeparator);
 
-        //Bundles have the file names
-        //filesSrc has the list of files
-
-        //need to use localizr to localize for corresponding files
 
         filesSrc.forEach(function(srcFile) {
-            var fileBundles = [],
-                subPromArr = [],
-                fileDefer = Q.defer(),
-                name = utils.getName(srcFile, 'public/templates') + '.properties';
-            superPromArr.push(fileDefer.promise);
-
-            //get the bundles that correspond to this file
-            fileBundles = bundles.filter(function(entry) {
-               return(entry.indexOf(name) !== -1);
-            });
-
-
-            //localize with each file/bundle combo
-            fileBundles.forEach(function(propFile) {
-                var destFile = utils.getName(propFile, bundleRoot) + '.dust';
-                destFile = path.join(options.tmpDir, destFile);
-                subPromArr.push(localize(srcFile, propFile, destFile));
-            });
-
-            Q.all(subPromArr).then(function(data){
-                fileDefer.resolve();
-            });
+            superPromArr.push(processSrcDust(srcFile, bundles, bundleRoot, options));
         });
 
         Q.all(superPromArr).then(function() {
@@ -89,7 +64,62 @@ module.exports = function(grunt) {
     });
 };
 
+function processSrcDust(srcFile, bundles, bundleRoot, options) {
+    var deferred = Q.defer(),
+        fileBundles,
+        name = utils.getName(srcFile, 'public/templates'),
+        propName = name + '.properties',
+        dustPromises = [];
+
+    //get the bundles that correspond to this file
+    fileBundles = bundles.filter(function(entry) {
+        return(entry.indexOf(propName) !== -1);
+    });
+
+    if (fileBundles.length === 0) {
+        dustPromises = dustPromises.concat(processWhenNoBundles(bundles, bundleRoot, srcFile, name, options));
+
+    } else {
+        dustPromises = dustPromises.concat(processWithBundles(srcFile, fileBundles, bundleRoot, options));
+    }
+    Q.all(dustPromises).then(function() {
+        deferred.resolve();
+    });
+
+    return deferred.promise;
+}
+
+function processWhenNoBundles(bundles, bundleRoot, srcFile, name, options) {
+    var arr = bundles.map(function(entry){
+            var arr = entry.split(path.sep);
+            arr.pop();
+
+            return arr.join(path.sep).replace(bundleRoot + path.sep, '');
+        }).filter(function(entry, index, self) {
+            return (self.indexOf(entry) === index);
+        }),
+        copyPromises = [];
+
+    arr.forEach(function(entry) {
+       var destFile = path.join(process.cwd(), options.tmpDir, entry, name + '.dust');
+        copyPromises.push(copy(srcFile, destFile));
+    });
+    return copyPromises;
+}
+
+function processWithBundles(srcFile, fileBundles, bundleRoot, options) {
+    var localizeProms = [];
+    //localize with each file/bundle combo
+    fileBundles.forEach(function(propFile) {
+        var destFile = utils.getName(propFile, bundleRoot) + '.dust';
+        destFile = path.join(options.tmpDir, destFile);
+        localizeProms.push(localize(srcFile, propFile, destFile));
+    });
+    return localizeProms;
+}
+
 function localize(srcFile, propFile, destFile) {
+
     var srcFile = path.join(process.cwd(), srcFile),
         propFile = path.join(process.cwd(), propFile),
         destFile = path.join(process.cwd(), destFile),
@@ -99,14 +129,12 @@ function localize(srcFile, propFile, destFile) {
         },
         deferred = Q.defer();
 
-    mkdirp(path.dirname(destFile), function (err) {
-        var out;
+    mkdirp(path.dirname(destFile), function(err){
         if (err) {
             deferred.reject(err);
             return;
         }
-
-        out = concat({ encoding: 'string' }, function (data) {
+        var out = concat({ encoding: 'string' }, function (data) {
             fs.writeFile(destFile, data, function (err) {
                 if (err) {
                     deferred.reject(err);
@@ -115,13 +143,28 @@ function localize(srcFile, propFile, destFile) {
                 deferred.resolve(destFile);
             });
         });
-
         try {
             localizr.createReadStream(opt).pipe(out);
         } catch (err) {
             deferred.reject(err);
         }
+    });
 
+
+
+    return deferred.promise;
+}
+
+function copy(srcFile, destFile) {
+   var deferred = Q.defer();
+    mkdirp(path.dirname(destFile), function(err) {
+       if (err) {
+            deferred.reject(err);
+            return;
+       }
+       fs.createReadStream(srcFile).pipe(fs.createWriteStream(destFile));
+       deferred.resolve();
     });
     return deferred.promise;
 }
+
