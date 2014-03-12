@@ -23,7 +23,6 @@ module.exports = function(grunt) {
         var done, options, contentPath, bundles, bundleRoot, filesSrc,
             pathName = path.sep + '**' + path.sep + '*.properties',
             fileRoot = path.join('public', 'templates'),
-            superPromArr = [],
             propFile = this.options().contentFile,
             promise;
 
@@ -32,6 +31,7 @@ module.exports = function(grunt) {
         options = this.options({
             fallback: 'en_US',
             contentPath: ['locales'],
+            fileRoot: fileRoot,
             tmpDir: 'tmp'
         });
 
@@ -62,18 +62,13 @@ module.exports = function(grunt) {
         if (propFile) {
             promise = processPropFileChanged(propFile, fileRoot, bundleRoot, options);
             promise.then(done);
-            return;
+        } else {
+            bundles = (grunt.file.expand(contentPath)).map(correctPathSeparator);
+
+            Q.all(filesSrc.map(function(srcFile) {
+                return processSrcDust(srcFile, bundles, bundleRoot, options);
+            })).then(done);
         }
-
-        bundles = (grunt.file.expand(contentPath)).map(correctPathSeparator);
-
-        filesSrc.forEach(function(srcFile) {
-            superPromArr.push(processSrcDust(srcFile, bundles, bundleRoot, options));
-        });
-
-        Q.all(superPromArr).then(function() {
-            done();
-        });
     });
 };
 
@@ -104,7 +99,7 @@ function processPropFileChanged(propFile, fileRoot, bundleRoot, options) {
 function processSrcDust(srcFile, bundles, bundleRoot, options) {
     var deferred = Q.defer(),
         fileBundles,
-        name = utils.getName(srcFile, 'public/templates'),
+        name = utils.getName(srcFile, options.fileRoot),
         propName = name + '.properties',
         dustPromises = [];
 
@@ -127,32 +122,29 @@ function processSrcDust(srcFile, bundles, bundleRoot, options) {
 }
 
 function processWhenNoBundles(bundles, bundleRoot, srcFile, name, options) {
-    var arr = bundles.map(function(entry){
+    return bundles.map(function(entry){
             var arr = entry.split(path.sep);
             arr.pop();
-
-            return arr.join(path.sep).replace(bundleRoot + path.sep, '');
+            arr.shift();
+            if(arr.length > 2) {
+                arr = arr.slice(0,2);
+            }
+            return arr.join(path.sep);
         }).filter(function(entry, index, self) {
             return (self.indexOf(entry) === index);
-        }),
-        copyPromises = [];
-
-    arr.forEach(function(entry) {
-       var destFile = path.join(process.cwd(), options.tmpDir, entry, name + '.dust');
-        copyPromises.push(copy(srcFile, destFile));
-    });
-    return copyPromises;
+        }).map(function(entry) {
+            var destFile = path.join(process.cwd(), options.tmpDir, entry, name + '.dust');
+            return copy(srcFile, destFile);
+        });
 }
 
 function processWithBundles(srcFile, fileBundles, bundleRoot, options) {
-    var localizeProms = [];
     //localize with each file/bundle combo
-    fileBundles.forEach(function(propFile) {
+    return fileBundles.map(function(propFile) {
         var destFile = utils.getName(propFile, bundleRoot) + '.dust';
         destFile = path.join(options.tmpDir, destFile);
-        localizeProms.push(localize(srcFile, propFile, destFile));
+        return localize(srcFile, propFile, destFile);
     });
-    return localizeProms;
 }
 
 function localize(srcFile, propFile, destFile) {
