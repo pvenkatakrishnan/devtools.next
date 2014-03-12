@@ -54,30 +54,36 @@ module.exports = function (grunt) {
     grunt.registerTask('i18n', ['clean', 'localizr', 'dustjs', 'clean:tmp']);
 
     grunt.event.on('watch', function (action, filepath) {
-        // If the file is a dust file
-        if (grunt.file.isMatch(grunt.config('watch.dust.files'), filepath)) {
-            var config = {};
 
-            // Override the localizr config
-            console.info('ext', path.extname(filepath));
+        if (grunt.file.isMatch(grunt.config('watch.dust.files'), filepath)) {
+            var config = {},
+                input,
+                output;
+
             if (path.extname(filepath) === '.properties') {
-                console.info('setting contentFile');
+                //This is the case where properties file is changed
+
+                // Override the localizr config
                 grunt.config('localizr.options.contentFile', filepath);
 
+                input = filepath.replace('locales/', 'tmp/').replace('.properties','.dust');
+                output = filepath.replace('locales/', '.build/templates/').replace('.properties', '.js');
+                config[output] = input;
+
+                //Override the dust config
+                grunt.config('dustjs.compile.files', config);
+
             } else {
+                //This is the case where a dust file is changed
+                var name = path.basename(filepath);
+                //override localizr config
                 grunt.config('localizr.files', [filepath]);
+
+                //override dust config
+                var conf = grunt.config.get('dustjs.compile.files');
+                conf[0].src = path.join('**', name);
+                grunt.config.set('dustjs.compile.files', conf);
             }
-            // var input = filepath;
-            // var output = filepath.replace('public/', '.build/').replace('.dust', '.js');
-
-            // config[output] = input;
-
-
-
-
-            //Override the dust config
-            //grunt.config('dust.compile.files',)
-
         }
     });
 };

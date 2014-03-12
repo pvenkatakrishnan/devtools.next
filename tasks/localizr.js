@@ -65,10 +65,7 @@ module.exports = function(grunt) {
             return;
         }
 
-
-
         bundles = (grunt.file.expand(contentPath)).map(correctPathSeparator);
-
 
         filesSrc.forEach(function(srcFile) {
             superPromArr.push(processSrcDust(srcFile, bundles, bundleRoot, options));
@@ -96,7 +93,6 @@ function processPropFileChanged(propFile, fileRoot, bundleRoot, options) {
         fileInfo.locale = undefined;
         srcFile = utils.genFilePath(fileRoot, fileInfo, 'dust');
 
-        console.info(srcFile, ',', destFile, ',', propFile);
         var promise = localize(srcFile, propFile, destFile);
         promise.then(function() {
             deferred.resolve();
@@ -181,7 +177,7 @@ function localize(srcFile, propFile, destFile) {
                     deferred.reject(err);
                     return;
                 }
-                logger.write('\nGenerated ', destFile);
+                logger.write('Generated ', destFile, '\n');
                 deferred.resolve(destFile);
             });
         });
@@ -205,7 +201,7 @@ function copy(srcFile, destFile) {
             return;
         }
         fs.createReadStream(srcFile).pipe(fs.createWriteStream(destFile));
-        logger.write('\nGenerated ', destFile);
+        logger.write('Generated ', destFile, '\n');
         deferred.resolve();
     });
     return deferred.promise;
